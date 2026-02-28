@@ -258,21 +258,62 @@
       abrirModal(decodedText);
     }
 
+    function esDispositivoIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function elegirCamaraTrasera(camaras) {
+      const porEtiqueta = camaras.find(c => /(back|rear|environment|trasera)/i.test(c.label || ''));
+      return porEtiqueta || camaras[0];
+    }
+
+    async function iniciarConFallback(html5QrCode, camaras, config) {
+      const camaraPreferida = elegirCamaraTrasera(camaras);
+      const intentos = [
+        camaraPreferida?.id,
+        { facingMode: 'environment' },
+        camaras[0]?.id
+      ].filter(Boolean);
+
+      let ultimoError;
+      for (const objetivo of intentos) {
+        try {
+          await html5QrCode.start(objetivo, config, onScanSuccess, () => {});
+          return;
+        } catch (e) {
+          ultimoError = e;
+        }
+      }
+
+      throw ultimoError || new Error('No se pudo iniciar el lector QR.');
+    }
+
     async function iniciarScanner() {
       try {
         const html5QrCode = new Html5Qrcode('reader');
         const cams = await Html5Qrcode.getCameras();
         if (!cams?.length) throw new Error('No se detectaron cámaras.');
 
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          onScanSuccess,
-          () => {}
-        );
+        const esIOS = esDispositivoIOS();
+        const configEscaneo = {
+          fps: esIOS ? 7 : 10,
+          aspectRatio: 1.333,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
+        };
+
+        if (!esIOS) {
+          configEscaneo.qrbox = { width: 240, height: 240 };
+        } else {
+          statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
+        }
+
+        await iniciarConFallback(html5QrCode, cams, configEscaneo);
 
         scanState.textContent = 'Escáner activo';
-        statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+        if (!esIOS) {
+          statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+        }
       } catch (err) {
         scanState.textContent = 'Error de cámara';
         statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
