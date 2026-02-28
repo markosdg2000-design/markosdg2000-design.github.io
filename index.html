@@ -7,7 +7,7 @@
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#111;color:#fff}
     header{padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:10}
-    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:96px}
+    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:160px}
     input,button{font-size:18px;padding:12px;border-radius:10px;border:1px solid #333}
     input{width:100%;background:#0b0b0b;color:#fff}
     button{background:#2b6cff;color:#fff;border:none;font-weight:900;cursor:pointer}
@@ -26,14 +26,18 @@
     th,td{border-bottom:1px solid #2a2a2a;padding:8px;text-align:left}
     th{color:#bbb;font-weight:700}
 
-    .footerAction{
+    .footerActions{
       position:fixed;
       left:12px;
       right:12px;
       bottom:14px;
       z-index:20;
+      display:grid;
+      gap:8px;
+    }
+    .footerAction{
       border-radius:999px;
-      font-size:20px;
+      font-size:18px;
       box-shadow:0 8px 30px rgba(43,108,255,.35);
     }
 
@@ -85,7 +89,10 @@
     </section>
   </main>
 
-  <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
+  <div class="footerActions">
+    <button class="footerAction secondary" id="copyBtn">📋 Copiar tabla enriquecida</button>
+    <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
+  </div>
 
   <div class="modalWrap" id="modalWrap" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
@@ -186,39 +193,92 @@
       cerrarModal();
     });
 
-    function generarCSV() {
-      const encabezado = ['codigo_componente', 'cantidad', 'numero_serie_destino', 'fecha_hora'];
-      const filas = registros.map(r => [r.codigo, r.cantidad, r.serie, r.fecha]);
-      return [encabezado, ...filas]
-        .map(row => row.map(v => `"${String(v).replaceAll('"', '""')}"`).join(';'))
-        .join('\n');
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
     }
 
-    function descargarCSV(nombre, contenido) {
-      const blob = new Blob([contenido], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombre;
-      a.click();
-      URL.revokeObjectURL(url);
+    function generarTablaHTMLSimple() {
+      const estiloTabla = 'border-collapse:collapse;width:100%;';
+      const estiloHeader = 'border:1px solid #000;padding:6px;text-align:left;font-weight:700;';
+      const estiloCelda = 'border:1px solid #000;padding:6px;text-align:left;';
+
+      const head = '<tr>' +
+        '<th style="' + estiloHeader + '">#</th>' +
+        '<th style="' + estiloHeader + '">Código componente</th>' +
+        '<th style="' + estiloHeader + '">Cantidad</th>' +
+        '<th style="' + estiloHeader + '">Nº serie destino</th>' +
+        '<th style="' + estiloHeader + '">Fecha/hora</th>' +
+      '</tr>';
+
+      const body = registros.map((r, i) => '<tr>' +
+        `<td style="${estiloCelda}">${i + 1}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.codigo)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.cantidad)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.serie)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.fecha)}</td>` +
+      '</tr>').join('');
+
+      return `<table style="${estiloTabla}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
     }
 
-    $('mailBtn').addEventListener('click', () => {
+    function generarTablaTextoSimple() {
+      const encabezado = '# | Código componente | Cantidad | Nº serie destino | Fecha/hora';
+      const filas = registros.map((r, i) => `${i + 1} | ${r.codigo} | ${r.cantidad} | ${r.serie} | ${r.fecha}`);
+      return [encabezado, ...filas].join('\n');
+    }
+
+    async function copiarTablaAlPortapapeles(htmlTabla, textoPlano) {
+      if (!navigator.clipboard) return false;
+
+      try {
+        if (window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([htmlTabla], { type: 'text/html' }),
+            'text/plain': new Blob([textoPlano], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+        } else {
+          await navigator.clipboard.writeText(textoPlano);
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    async function copiarTablaInventario() {
       if (!registros.length) {
         alert('No hay registros todavía.');
-        return;
+        return false;
       }
 
-      const csv = generarCSV();
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      descargarCSV(`inventario-${stamp}.csv`, csv);
+      const htmlTabla = generarTablaHTMLSimple();
+      const textoPlano = generarTablaTextoSimple();
+      const copiado = await copiarTablaAlPortapapeles(htmlTabla, textoPlano);
+
+      if (copiado) {
+        alert('Tabla enriquecida copiada. Ya puedes pegarla donde quieras.');
+      } else {
+        alert('No se pudo copiar con formato enriquecido automáticamente en este dispositivo.');
+      }
+      return copiado;
+    }
+
+    $('copyBtn').addEventListener('click', copiarTablaInventario);
+
+    $('mailBtn').addEventListener('click', async () => {
+      const copiado = await copiarTablaInventario();
+      if (!registros.length) return;
 
       const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
-      const cuerpo = encodeURIComponent(
-        'Adjunta el CSV descargado automáticamente con los registros del inventario.\n\n' +
-        'Vista rápida:\n' + csv.slice(0, 1200)
-      );
+      const cuerpo = copiado
+        ? encodeURIComponent('La tabla de inventario ya está copiada con formato enriquecido.\nPégala en el cuerpo del correo (Cmd/Ctrl + V).')
+        : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar manualmente la tabla visible en la app.');
 
       window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
     });
@@ -234,21 +294,107 @@
       abrirModal(decodedText);
     }
 
+
+    function obtenerTrackActivoDelReader() {
+      const video = document.querySelector('#reader video');
+      const stream = video?.srcObject;
+      const track = stream?.getVideoTracks?.()[0];
+      return track || null;
+    }
+
+    async function aplicarAutoenfoque(track) {
+      if (!track?.getCapabilities || !track?.applyConstraints) return false;
+
+      const caps = track.getCapabilities();
+      const advanced = [];
+      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+      }
+      if (caps.focusDistance) {
+        advanced.push({ focusDistance: caps.focusDistance.max });
+      }
+
+      if (!advanced.length) return false;
+
+      await track.applyConstraints({ advanced });
+      return true;
+    }
+
+    async function intentarConfigurarAutoenfoque() {
+      for (let i = 0; i < 6; i += 1) {
+        const track = obtenerTrackActivoDelReader();
+        if (track) {
+          try {
+            const ok = await aplicarAutoenfoque(track);
+            if (ok) {
+              statusEl.textContent = 'Autoenfoque activado. Escanea con la cámara trasera.';
+            }
+            return;
+          } catch (_) {
+            return;
+          }
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+
+    function esDispositivoIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function elegirCamaraTrasera(camaras) {
+      const porEtiqueta = camaras.find(c => /(back|rear|environment|trasera)/i.test(c.label || ''));
+      return porEtiqueta || camaras[0];
+    }
+
+    async function iniciarConFallback(html5QrCode, camaras, config) {
+      const camaraPreferida = elegirCamaraTrasera(camaras);
+      const intentos = [
+        camaraPreferida?.id,
+        { facingMode: 'environment' },
+        camaras[0]?.id
+      ].filter(Boolean);
+
+      let ultimoError;
+      for (const objetivo of intentos) {
+        try {
+          await html5QrCode.start(objetivo, config, onScanSuccess, () => {});
+          return;
+        } catch (e) {
+          ultimoError = e;
+        }
+      }
+
+      throw ultimoError || new Error('No se pudo iniciar el lector QR.');
+    }
+
     async function iniciarScanner() {
       try {
         const html5QrCode = new Html5Qrcode('reader');
         const cams = await Html5Qrcode.getCameras();
         if (!cams?.length) throw new Error('No se detectaron cámaras.');
 
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          onScanSuccess,
-          () => {}
-        );
+        const esIOS = esDispositivoIOS();
+        const configEscaneo = {
+          fps: esIOS ? 7 : 10,
+          aspectRatio: 1.333,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
+        };
+
+        if (!esIOS) {
+          configEscaneo.qrbox = { width: 240, height: 240 };
+        } else {
+          statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
+        }
+
+        await iniciarConFallback(html5QrCode, cams, configEscaneo);
+        await intentarConfigurarAutoenfoque();
 
         scanState.textContent = 'Escáner activo';
-        statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+        if (!esIOS) {
+          statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+        }
       } catch (err) {
         scanState.textContent = 'Error de cámara';
         statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
