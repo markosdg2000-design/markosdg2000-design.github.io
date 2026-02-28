@@ -186,64 +186,79 @@
       cerrarModal();
     });
 
-    function recortarTexto(valor, max = 30) {
-      const txt = String(valor ?? '');
-      return txt.length > max ? `${txt.slice(0, max - 1)}…` : txt;
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
     }
 
-    function generarTablaTexto() {
-      const headers = ['#', 'Código componente', 'Cantidad', 'Nº serie destino', 'Fecha/hora'];
-      const filas = registros.map((r, i) => [
-        String(i + 1),
-        recortarTexto(r.codigo, 26),
-        String(r.cantidad),
-        recortarTexto(r.serie, 24),
-        recortarTexto(r.fecha, 22)
-      ]);
+    function generarTablaHTMLSimple() {
+      const estiloTabla = 'border-collapse:collapse;width:100%;';
+      const estiloHeader = 'border:1px solid #000;padding:6px;text-align:left;font-weight:700;';
+      const estiloCelda = 'border:1px solid #000;padding:6px;text-align:left;';
 
-      const widths = headers.map((h, i) => Math.max(h.length, ...filas.map(f => f[i].length)));
-      const sep = `+-${widths.map(w => '-'.repeat(w)).join('-+-')}-+`;
-      const row = (cols) => `| ${cols.map((c, i) => c.padEnd(widths[i], ' ')).join(' | ')} |`;
+      const head = '<tr>' +
+        '<th style="' + estiloHeader + '">#</th>' +
+        '<th style="' + estiloHeader + '">Código componente</th>' +
+        '<th style="' + estiloHeader + '">Cantidad</th>' +
+        '<th style="' + estiloHeader + '">Nº serie destino</th>' +
+        '<th style="' + estiloHeader + '">Fecha/hora</th>' +
+      '</tr>';
 
-      return [
-        sep,
-        row(headers),
-        sep,
-        ...filas.map(row),
-        sep
-      ].join('\n');
+      const body = registros.map((r, i) => '<tr>' +
+        `<td style="${estiloCelda}">${i + 1}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.codigo)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.cantidad)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.serie)}</td>` +
+        `<td style="${estiloCelda}">${escapeHtml(r.fecha)}</td>` +
+      '</tr>').join('');
+
+      return `<table style="${estiloTabla}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
     }
 
-    function generarTablaHTML() {
-      const estiloTabla = 'border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;';
-      const estiloCelda = 'border:1px solid #999;padding:6px;text-align:left;';
-      const thead = `<tr><th style="${estiloCelda}">#</th><th style="${estiloCelda}">Código componente</th><th style="${estiloCelda}">Cantidad</th><th style="${estiloCelda}">Nº serie destino</th><th style="${estiloCelda}">Fecha/hora</th></tr>`;
-      const rows = registros.map((r, i) =>
-        `<tr><td style="${estiloCelda}">${i + 1}</td><td style="${estiloCelda}">${r.codigo}</td><td style="${estiloCelda}">${r.cantidad}</td><td style="${estiloCelda}">${r.serie}</td><td style="${estiloCelda}">${r.fecha}</td></tr>`
-      ).join('');
-      return `<table style="${estiloTabla}"><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+    function generarTablaTextoSimple() {
+      const encabezado = '# | Código componente | Cantidad | Nº serie destino | Fecha/hora';
+      const filas = registros.map((r, i) => `${i + 1} | ${r.codigo} | ${r.cantidad} | ${r.serie} | ${r.fecha}`);
+      return [encabezado, ...filas].join('\n');
     }
 
-    $('mailBtn').addEventListener('click', () => {
+    async function copiarTablaAlPortapapeles(htmlTabla, textoPlano) {
+      if (!navigator.clipboard) return false;
+
+      try {
+        if (window.ClipboardItem) {
+          const item = new ClipboardItem({
+            'text/html': new Blob([htmlTabla], { type: 'text/html' }),
+            'text/plain': new Blob([textoPlano], { type: 'text/plain' })
+          });
+          await navigator.clipboard.write([item]);
+        } else {
+          await navigator.clipboard.writeText(textoPlano);
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    $('mailBtn').addEventListener('click', async () => {
       if (!registros.length) {
         alert('No hay registros todavía.');
         return;
       }
 
       const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
-      const tablaTxt = generarTablaTexto();
-      const tablaHtml = generarTablaHTML();
-      const cuerpoPlano = [
-        'Inventario generado por la app de escaneo QR.',
-        '',
-        'Tabla (texto):',
-        tablaTxt,
-        '',
-        'Tabla HTML (si tu cliente la soporta al pegar/interpretar):',
-        tablaHtml
-      ].join('\n');
+      const htmlTabla = generarTablaHTMLSimple();
+      const textoPlano = generarTablaTextoSimple();
+      const copiado = await copiarTablaAlPortapapeles(htmlTabla, textoPlano);
 
-      const cuerpo = encodeURIComponent(cuerpoPlano.slice(0, 1800));
+      const cuerpo = copiado
+        ? encodeURIComponent('La tabla de inventario se copió al portapapeles con formato enriquecido.\nPégala en el cuerpo del correo (Cmd/Ctrl + V).')
+        : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar la tabla visible en la app y pegarla en el correo.');
+
       window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
     });
 
