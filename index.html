@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventario QR Rápido</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#111;color:#fff}
+    header{padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:10}
+    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:96px}
+    input,button{font-size:18px;padding:12px;border-radius:10px;border:1px solid #333}
+    input{width:100%;background:#0b0b0b;color:#fff}
+    button{background:#2b6cff;color:#fff;border:none;font-weight:900;cursor:pointer}
+    button.secondary{background:#333}
+    .card{background:#1b1b1b;border:1px solid #2a2a2a;border-radius:14px;padding:12px}
+    .muted{color:#bbb}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row>*{flex:1;min-width:140px}
+    .status{font-size:14px;color:#bbb;margin-top:10px}
+    .scanBig{font-size:22px;padding:16px;border-radius:14px}
+    .hint{font-size:12px;color:#9a9a9a}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#0b0b0b;border:1px solid #2a2a2a;color:#bbb;font-size:12px}
+
+    #reader{width:100%;border-radius:14px;overflow:hidden}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{border-bottom:1px solid #2a2a2a;padding:8px;text-align:left}
+    th{color:#bbb;font-weight:700}
+
+    .footerAction{
+      position:fixed;
+      left:12px;
+      right:12px;
+      bottom:14px;
+      z-index:20;
+      border-radius:999px;
+      font-size:20px;
+      box-shadow:0 8px 30px rgba(43,108,255,.35);
+    }
+
+    .modalWrap{
+      position:fixed;inset:0;background:rgba(0,0,0,.65);
+      display:none;align-items:center;justify-content:center;padding:16px;z-index:30;
+    }
+    .modal{
+      width:min(520px,100%);
+      background:#1b1b1b;border:1px solid #2a2a2a;border-radius:16px;padding:14px;
+      display:grid;gap:10px;
+    }
+    .modal h3{margin:0 0 4px 0}
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Inventario QR Rápido</strong>
+    <div class="muted">Escaneo continuo + registro inmediato</div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <div class="row" style="align-items:center;">
+        <span class="pill" id="scanState">Escáner iniciando…</span>
+        <span class="pill">Registros: <strong id="totalRegistros">0</strong></span>
+      </div>
+      <p class="hint">El lector permanece abierto. Al detectar un QR, se abre un formulario para completar cantidad y número de serie.</p>
+      <div id="reader"></div>
+      <div class="status" id="status">Preparando cámara…</div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-top:0">Tabla temporal</h3>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Código componente</th>
+              <th>Cantidad</th>
+              <th>Nº serie destino</th>
+              <th>Fecha/hora</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
+
+  <div class="modalWrap" id="modalWrap" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>Registrar material escaneado</h3>
+      <div class="muted" id="codigoDetectado"></div>
+      <label>
+        Cantidad
+        <input id="cantidadInput" type="number" min="1" step="1" placeholder="Ej. 10" />
+      </label>
+      <label>
+        Nº de serie destino
+        <input id="serieInput" type="text" placeholder="Ej. SN-2026-001" />
+      </label>
+      <div class="row">
+        <button class="secondary" id="cancelBtn" type="button">Cancelar</button>
+        <button id="guardarBtn" type="button">Registrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <script>
+    const registros = [];
+    let ultimoCodigo = '';
+    let ultimoMomento = 0;
+    let codigoPendiente = null;
+    let modalAbierta = false;
+
+    const $ = (id) => document.getElementById(id);
+    const tbody = $('tbody');
+    const totalRegistros = $('totalRegistros');
+    const statusEl = $('status');
+    const scanState = $('scanState');
+
+    function fmtDate(d) {
+      return new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(d);
+    }
+
+    function actualizarTabla() {
+      tbody.innerHTML = '';
+      registros.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${r.codigo}</td>
+          <td>${r.cantidad}</td>
+          <td>${r.serie}</td>
+          <td>${r.fecha}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      totalRegistros.textContent = registros.length;
+    }
+
+    function abrirModal(codigo) {
+      modalAbierta = true;
+      codigoPendiente = codigo;
+      $('codigoDetectado').textContent = `Código detectado: ${codigo}`;
+      $('cantidadInput').value = '';
+      $('serieInput').value = '';
+      $('modalWrap').style.display = 'flex';
+      $('modalWrap').setAttribute('aria-hidden', 'false');
+      $('cantidadInput').focus();
+    }
+
+    function cerrarModal() {
+      modalAbierta = false;
+      codigoPendiente = null;
+      $('modalWrap').style.display = 'none';
+      $('modalWrap').setAttribute('aria-hidden', 'true');
+      statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
+    }
+
+    $('cancelBtn').addEventListener('click', cerrarModal);
+
+    $('guardarBtn').addEventListener('click', () => {
+      const cantidad = Number($('cantidadInput').value);
+      const serie = $('serieInput').value.trim();
+
+      if (!codigoPendiente) return;
+      if (!cantidad || cantidad <= 0) {
+        alert('Introduce una cantidad válida mayor que 0.');
+        return;
+      }
+      if (!serie) {
+        alert('Introduce el número de serie destino.');
+        return;
+      }
+
+      registros.push({
+        codigo: codigoPendiente,
+        cantidad,
+        serie,
+        fecha: fmtDate(new Date())
+      });
+
+      actualizarTabla();
+      cerrarModal();
+    });
+
+    function recortarTexto(valor, max = 30) {
+      const txt = String(valor ?? '');
+      return txt.length > max ? `${txt.slice(0, max - 1)}…` : txt;
+    }
+
+    function generarTablaTexto() {
+      const headers = ['#', 'Código componente', 'Cantidad', 'Nº serie destino', 'Fecha/hora'];
+      const filas = registros.map((r, i) => [
+        String(i + 1),
+        recortarTexto(r.codigo, 26),
+        String(r.cantidad),
+        recortarTexto(r.serie, 24),
+        recortarTexto(r.fecha, 22)
+      ]);
+
+      const widths = headers.map((h, i) => Math.max(h.length, ...filas.map(f => f[i].length)));
+      const sep = `+-${widths.map(w => '-'.repeat(w)).join('-+-')}-+`;
+      const row = (cols) => `| ${cols.map((c, i) => c.padEnd(widths[i], ' ')).join(' | ')} |`;
+
+      return [
+        sep,
+        row(headers),
+        sep,
+        ...filas.map(row),
+        sep
+      ].join('\n');
+    }
+
+    function generarTablaHTML() {
+      const estiloTabla = 'border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;';
+      const estiloCelda = 'border:1px solid #999;padding:6px;text-align:left;';
+      const thead = `<tr><th style="${estiloCelda}">#</th><th style="${estiloCelda}">Código componente</th><th style="${estiloCelda}">Cantidad</th><th style="${estiloCelda}">Nº serie destino</th><th style="${estiloCelda}">Fecha/hora</th></tr>`;
+      const rows = registros.map((r, i) =>
+        `<tr><td style="${estiloCelda}">${i + 1}</td><td style="${estiloCelda}">${r.codigo}</td><td style="${estiloCelda}">${r.cantidad}</td><td style="${estiloCelda}">${r.serie}</td><td style="${estiloCelda}">${r.fecha}</td></tr>`
+      ).join('');
+      return `<table style="${estiloTabla}"><thead>${thead}</thead><tbody>${rows}</tbody></table>`;
+    }
+
+    $('mailBtn').addEventListener('click', () => {
+      if (!registros.length) {
+        alert('No hay registros todavía.');
+        return;
+      }
+
+      const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
+      const tablaTxt = generarTablaTexto();
+      const tablaHtml = generarTablaHTML();
+      const cuerpoPlano = [
+        'Inventario generado por la app de escaneo QR.',
+        '',
+        'Tabla (texto):',
+        tablaTxt,
+        '',
+        'Tabla HTML (si tu cliente la soporta al pegar/interpretar):',
+        tablaHtml
+      ].join('\n');
+
+      const cuerpo = encodeURIComponent(cuerpoPlano.slice(0, 1800));
+      window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
+    });
+
+    function onScanSuccess(decodedText) {
+      const ahora = Date.now();
+      const duplicadoReciente = decodedText === ultimoCodigo && (ahora - ultimoMomento) < 2500;
+      if (modalAbierta || duplicadoReciente) return;
+
+      ultimoCodigo = decodedText;
+      ultimoMomento = ahora;
+      statusEl.textContent = `QR detectado: ${decodedText}`;
+      abrirModal(decodedText);
+    }
+
+    async function iniciarScanner() {
+      try {
+        const html5QrCode = new Html5Qrcode('reader');
+        const cams = await Html5Qrcode.getCameras();
+        if (!cams?.length) throw new Error('No se detectaron cámaras.');
+
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          onScanSuccess,
+          () => {}
+        );
+
+        scanState.textContent = 'Escáner activo';
+        statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+      } catch (err) {
+        scanState.textContent = 'Error de cámara';
+        statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
+      }
+    }
+
+    window.addEventListener('load', iniciarScanner);
+  </script>
+</body>
+</html>
