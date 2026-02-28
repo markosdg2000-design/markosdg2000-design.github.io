@@ -90,7 +90,7 @@
   </main>
 
   <div class="footerActions">
-    <button class="footerAction secondary" id="copyBtn">📋 Copiar tabla enriquecida</button>
+    <button class="footerAction secondary" id="copyBtn">📋 Copiar tabla en portapapeles</button>
     <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
   </div>
 
@@ -262,7 +262,7 @@
       const copiado = await copiarTablaAlPortapapeles(htmlTabla, textoPlano);
 
       if (copiado) {
-        alert('Tabla enriquecida copiada. Ya puedes pegarla donde quieras.');
+        alert('Tabla copiada. Ya puedes pegarla donde quieras.');
       } else {
         alert('No se pudo copiar con formato enriquecido automáticamente en este dispositivo.');
       }
@@ -277,7 +277,7 @@
 
       const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
       const cuerpo = copiado
-        ? encodeURIComponent('La tabla de inventario ya está copiada con formato enriquecido.\nPégala en el cuerpo del correo (Cmd/Ctrl + V).')
+        ? encodeURIComponent('La tabla de inventario ya está copiada en tu portapapeles.\nPégala en el cuerpo del correo (Paste/Pegar).')
         : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar manualmente la tabla visible en la app.');
 
       window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
