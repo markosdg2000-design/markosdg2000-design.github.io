@@ -258,6 +258,50 @@
       abrirModal(decodedText);
     }
 
+
+    function obtenerTrackActivoDelReader() {
+      const video = document.querySelector('#reader video');
+      const stream = video?.srcObject;
+      const track = stream?.getVideoTracks?.()[0];
+      return track || null;
+    }
+
+    async function aplicarAutoenfoque(track) {
+      if (!track?.getCapabilities || !track?.applyConstraints) return false;
+
+      const caps = track.getCapabilities();
+      const advanced = [];
+      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' });
+      }
+      if (caps.focusDistance) {
+        advanced.push({ focusDistance: caps.focusDistance.max });
+      }
+
+      if (!advanced.length) return false;
+
+      await track.applyConstraints({ advanced });
+      return true;
+    }
+
+    async function intentarConfigurarAutoenfoque() {
+      for (let i = 0; i < 6; i += 1) {
+        const track = obtenerTrackActivoDelReader();
+        if (track) {
+          try {
+            const ok = await aplicarAutoenfoque(track);
+            if (ok) {
+              statusEl.textContent = 'Autoenfoque activado. Escanea con la cámara trasera.';
+            }
+            return;
+          } catch (_) {
+            return;
+          }
+        }
+        await new Promise(r => setTimeout(r, 250));
+      }
+    }
+
     function esDispositivoIOS() {
       return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -309,6 +353,7 @@
         }
 
         await iniciarConFallback(html5QrCode, cams, configEscaneo);
+        await intentarConfigurarAutoenfoque();
 
         scanState.textContent = 'Escáner activo';
         if (!esIOS) {
