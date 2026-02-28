@@ -7,7 +7,7 @@
   <style>
     body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#111;color:#fff}
     header{padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:10}
-    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:96px}
+    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:160px}
     input,button{font-size:18px;padding:12px;border-radius:10px;border:1px solid #333}
     input{width:100%;background:#0b0b0b;color:#fff}
     button{background:#2b6cff;color:#fff;border:none;font-weight:900;cursor:pointer}
@@ -26,14 +26,18 @@
     th,td{border-bottom:1px solid #2a2a2a;padding:8px;text-align:left}
     th{color:#bbb;font-weight:700}
 
-    .footerAction{
+    .footerActions{
       position:fixed;
       left:12px;
       right:12px;
       bottom:14px;
       z-index:20;
+      display:grid;
+      gap:8px;
+    }
+    .footerAction{
       border-radius:999px;
-      font-size:20px;
+      font-size:18px;
       box-shadow:0 8px 30px rgba(43,108,255,.35);
     }
 
@@ -85,7 +89,10 @@
     </section>
   </main>
 
-  <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
+  <div class="footerActions">
+    <button class="footerAction secondary" id="copyBtn">📋 Copiar tabla enriquecida</button>
+    <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
+  </div>
 
   <div class="modalWrap" id="modalWrap" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
@@ -244,20 +251,34 @@
       }
     }
 
-    $('mailBtn').addEventListener('click', async () => {
+    async function copiarTablaInventario() {
       if (!registros.length) {
         alert('No hay registros todavía.');
-        return;
+        return false;
       }
 
-      const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
       const htmlTabla = generarTablaHTMLSimple();
       const textoPlano = generarTablaTextoSimple();
       const copiado = await copiarTablaAlPortapapeles(htmlTabla, textoPlano);
 
+      if (copiado) {
+        alert('Tabla enriquecida copiada. Ya puedes pegarla donde quieras.');
+      } else {
+        alert('No se pudo copiar con formato enriquecido automáticamente en este dispositivo.');
+      }
+      return copiado;
+    }
+
+    $('copyBtn').addEventListener('click', copiarTablaInventario);
+
+    $('mailBtn').addEventListener('click', async () => {
+      const copiado = await copiarTablaInventario();
+      if (!registros.length) return;
+
+      const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
       const cuerpo = copiado
-        ? encodeURIComponent('La tabla de inventario se copió al portapapeles con formato enriquecido.\nPégala en el cuerpo del correo (Cmd/Ctrl + V).')
-        : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar la tabla visible en la app y pegarla en el correo.');
+        ? encodeURIComponent('La tabla de inventario ya está copiada con formato enriquecido.\nPégala en el cuerpo del correo (Cmd/Ctrl + V).')
+        : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar manualmente la tabla visible en la app.');
 
       window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
     });
