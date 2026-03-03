@@ -10,13 +10,13 @@
   "lang": "es",
   "icons": [
     {
-      "src": "icons/icon-app.svg",
+      "src": "icons/icon-app.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-maskable.svg",
+      "src": "icons/icon-maskable.png",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
