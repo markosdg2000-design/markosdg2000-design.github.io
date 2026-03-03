@@ -1,0 +1,25 @@
+{
+  "name": "Inventario QR Rápido",
+  "short_name": "Inventario QR",
+  "description": "App de inventario con escaneo QR, cantidad y número de serie.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icons/icon-app.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
