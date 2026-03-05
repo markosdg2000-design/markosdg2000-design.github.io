@@ -3,405 +3,345 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inventario QR Rápido</title>
+  <title>Excel a JSON | ES05/ES0304</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#111;color:#fff}
-    header{padding:12px 14px;background:#1b1b1b;position:sticky;top:0;z-index:10}
-    .wrap{padding:12px;display:grid;gap:10px;padding-bottom:160px}
-    input,button{font-size:18px;padding:12px;border-radius:10px;border:1px solid #333}
-    input{width:100%;background:#0b0b0b;color:#fff}
-    button{background:#2b6cff;color:#fff;border:none;font-weight:900;cursor:pointer}
-    button.secondary{background:#333}
-    .card{background:#1b1b1b;border:1px solid #2a2a2a;border-radius:14px;padding:12px}
-    .muted{color:#bbb}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .row>*{flex:1;min-width:140px}
-    .status{font-size:14px;color:#bbb;margin-top:10px}
-    .scanBig{font-size:22px;padding:16px;border-radius:14px}
-    .hint{font-size:12px;color:#9a9a9a}
-    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#0b0b0b;border:1px solid #2a2a2a;color:#bbb;font-size:12px}
-
-    #reader{width:100%;border-radius:14px;overflow:hidden}
-    table{width:100%;border-collapse:collapse;font-size:14px}
-    th,td{border-bottom:1px solid #2a2a2a;padding:8px;text-align:left}
-    th{color:#bbb;font-weight:700}
-
-    .footerActions{
-      position:fixed;
-      left:12px;
-      right:12px;
-      bottom:14px;
-      z-index:20;
-      display:grid;
-      gap:8px;
-    }
-    .footerAction{
-      border-radius:999px;
-      font-size:18px;
-      box-shadow:0 8px 30px rgba(43,108,255,.35);
+    :root {
+      color-scheme: light dark;
+      --bg: #f3f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #667085;
+      --line: #d0d5dd;
+      --primary: #175cd3;
+      --primary-ink: #ffffff;
+      --ok: #067647;
+      --warn: #b54708;
     }
 
-    .modalWrap{
-      position:fixed;inset:0;background:rgba(0,0,0,.65);
-      display:none;align-items:center;justify-content:center;padding:16px;z-index:30;
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
     }
-    .modal{
-      width:min(520px,100%);
-      background:#1b1b1b;border:1px solid #2a2a2a;border-radius:16px;padding:14px;
-      display:grid;gap:10px;
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+      display: grid;
+      gap: 16px;
     }
-    .modal h3{margin:0 0 4px 0}
+
+    h1 { margin: 0; font-size: clamp(1.4rem, 1.1rem + 1.2vw, 2rem); }
+    p { margin: 0; color: var(--muted); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(16, 24, 40, 0.06);
+    }
+
+    .row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    }
+
+    label { font-weight: 600; display: grid; gap: 8px; font-size: 0.95rem; }
+    input[type="file"], input[type="text"], select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+      color: #111827;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--primary);
+      color: var(--primary-ink);
+    }
+
+    button.secondary { background: #344054; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .status {
+      border-radius: 10px;
+      padding: 10px;
+      background: #ecfdf3;
+      border: 1px solid #a6f4c5;
+      color: var(--ok);
+      font-weight: 600;
+    }
+
+    .status.warn {
+      background: #fffaeb;
+      border-color: #fedf89;
+      color: var(--warn);
+    }
+
+    pre {
+      margin: 0;
+      background: #101828;
+      color: #f2f4f7;
+      border-radius: 12px;
+      border: 1px solid #344054;
+      padding: 14px;
+      overflow: auto;
+      max-height: 430px;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+
+    .help {
+      font-size: 0.88rem;
+      color: var(--muted);
+      border-left: 4px solid var(--line);
+      padding-left: 10px;
+    }
   </style>
 </head>
 <body>
-  <header>
-    <strong>Inventario QR Rápido</strong>
-    <div class="muted">Escaneo continuo + registro inmediato</div>
-  </header>
-
-  <main class="wrap">
+  <main class="container">
     <section class="card">
-      <div class="row" style="align-items:center;">
-        <span class="pill" id="scanState">Escáner iniciando…</span>
-        <span class="pill">Registros: <strong id="totalRegistros">0</strong></span>
+      <h1>Conversor de Excel a JSON (ES05 / ES0304)</h1>
+      <p>Sube los archivos de material grande y mediano (cada uno con múltiples hojas) y genera un JSON limpio para integraciones.</p>
+      <div class="help">
+        Soporta cabeceras variables y en material grande conserva solo: AGRUP, COCHE, NºSERIE, Material, Texto breve de material, Componente, Texto breve-objeto, BLOQUE BOL, Ubicación DESEADA y Día Sec.
       </div>
-      <p class="hint">El lector permanece abierto. Al detectar un QR, se abre un formulario para completar cantidad y número de serie.</p>
-      <div id="reader"></div>
-      <div class="status" id="status">Preparando cámara…</div>
     </section>
 
     <section class="card">
-      <h3 style="margin-top:0">Tabla temporal</h3>
-      <div style="overflow:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Código componente</th>
-              <th>Cantidad</th>
-              <th>Nº serie destino</th>
-              <th>Fecha/hora</th>
-            </tr>
-          </thead>
-          <tbody id="tbody"></tbody>
-        </table>
+      <h2>1) Cargar archivos</h2>
+      <div class="row">
+        <label>
+          Archivos de material grande (ES05 y/o ES0304)
+          <input id="grandesInput" type="file" accept=".xlsx,.xls" multiple />
+        </label>
+        <label>
+          Archivos de material mediano (2 archivos esperados)
+          <input id="medianosInput" type="file" accept=".xlsx,.xls" multiple />
+        </label>
       </div>
+      <div class="row">
+        <label>
+          Nombre base del JSON de salida
+          <input id="nombreSalida" type="text" value="materiales_estaciones" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="transformarBtn">Transformar a JSON</button>
+        <button id="copiarBtn" class="secondary" disabled>Copiar JSON</button>
+        <button id="descargarBtn" disabled>Descargar JSON</button>
+      </div>
+      <div id="status" class="status warn">Todavía no se ha generado JSON.</div>
+    </section>
+
+    <section class="card">
+      <h2>2) Resultado</h2>
+      <pre id="jsonPreview">{}</pre>
     </section>
   </main>
 
-  <div class="footerActions">
-    <button class="footerAction secondary" id="copyBtn">📋 Copiar tabla en portapapeles</button>
-    <button class="footerAction" id="mailBtn">📧 Enviar inventario por mail</button>
-  </div>
-
-  <div class="modalWrap" id="modalWrap" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true">
-      <h3>Registrar material escaneado</h3>
-      <div class="muted" id="codigoDetectado"></div>
-      <label>
-        Cantidad
-        <input id="cantidadInput" type="number" min="1" step="1" placeholder="Ej. 10" />
-      </label>
-      <label>
-        Nº de serie destino
-        <input id="serieInput" type="text" placeholder="Ej. SN-2026-001" />
-      </label>
-      <div class="row">
-        <button class="secondary" id="cancelBtn" type="button">Cancelar</button>
-        <button id="guardarBtn" type="button">Registrar</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
-    const registros = [];
-    let ultimoCodigo = '';
-    let ultimoMomento = 0;
-    let codigoPendiente = null;
-    let modalAbierta = false;
-
     const $ = (id) => document.getElementById(id);
-    const tbody = $('tbody');
-    const totalRegistros = $('totalRegistros');
     const statusEl = $('status');
-    const scanState = $('scanState');
+    const previewEl = $('jsonPreview');
+    const copiarBtn = $('copiarBtn');
+    const descargarBtn = $('descargarBtn');
 
-    function fmtDate(d) {
-      return new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(d);
+    let resultadoActual = null;
+
+    function normalizarCabecera(celda) {
+      return String(celda || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
     }
 
-    function actualizarTabla() {
-      tbody.innerHTML = '';
-      registros.forEach((r, i) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${i + 1}</td>
-          <td>${r.codigo}</td>
-          <td>${r.cantidad}</td>
-          <td>${r.serie}</td>
-          <td>${r.fecha}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-      totalRegistros.textContent = registros.length;
-    }
-
-    function abrirModal(codigo) {
-      modalAbierta = true;
-      codigoPendiente = codigo;
-      $('codigoDetectado').textContent = `Código detectado: ${codigo}`;
-      $('cantidadInput').value = '';
-      $('serieInput').value = '';
-      $('modalWrap').style.display = 'flex';
-      $('modalWrap').setAttribute('aria-hidden', 'false');
-      $('cantidadInput').focus();
-    }
-
-    function cerrarModal() {
-      modalAbierta = false;
-      codigoPendiente = null;
-      $('modalWrap').style.display = 'none';
-      $('modalWrap').setAttribute('aria-hidden', 'true');
-      statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
-    }
-
-    $('cancelBtn').addEventListener('click', cerrarModal);
-
-    $('guardarBtn').addEventListener('click', () => {
-      const cantidad = Number($('cantidadInput').value);
-      const serie = $('serieInput').value.trim();
-
-      if (!codigoPendiente) return;
-      if (!cantidad || cantidad <= 0) {
-        alert('Introduce una cantidad válida mayor que 0.');
-        return;
-      }
-      if (!serie) {
-        alert('Introduce el número de serie destino.');
-        return;
-      }
-
-      registros.push({
-        codigo: codigoPendiente,
-        cantidad,
-        serie,
-        fecha: fmtDate(new Date())
-      });
-
-      actualizarTabla();
-      cerrarModal();
-    });
-
-    function escapeHtml(value) {
-      return String(value ?? '')
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
-    }
-
-    function generarTablaHTMLSimple() {
-      const estiloTabla = 'border-collapse:collapse;width:100%;';
-      const estiloHeader = 'border:1px solid #000;padding:6px;text-align:left;font-weight:700;';
-      const estiloCelda = 'border:1px solid #000;padding:6px;text-align:left;';
-
-      const head = '<tr>' +
-        '<th style="' + estiloHeader + '">#</th>' +
-        '<th style="' + estiloHeader + '">Código componente</th>' +
-        '<th style="' + estiloHeader + '">Cantidad</th>' +
-        '<th style="' + estiloHeader + '">Nº serie destino</th>' +
-        '<th style="' + estiloHeader + '">Fecha/hora</th>' +
-      '</tr>';
-
-      const body = registros.map((r, i) => '<tr>' +
-        `<td style="${estiloCelda}">${i + 1}</td>` +
-        `<td style="${estiloCelda}">${escapeHtml(r.codigo)}</td>` +
-        `<td style="${estiloCelda}">${escapeHtml(r.cantidad)}</td>` +
-        `<td style="${estiloCelda}">${escapeHtml(r.serie)}</td>` +
-        `<td style="${estiloCelda}">${escapeHtml(r.fecha)}</td>` +
-      '</tr>').join('');
-
-      return `<table style="${estiloTabla}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
-    }
-
-    function generarTablaTextoSimple() {
-      const encabezado = '# | Código componente | Cantidad | Nº serie destino | Fecha/hora';
-      const filas = registros.map((r, i) => `${i + 1} | ${r.codigo} | ${r.cantidad} | ${r.serie} | ${r.fecha}`);
-      return [encabezado, ...filas].join('\n');
-    }
-
-    async function copiarTablaAlPortapapeles(htmlTabla, textoPlano) {
-      if (!navigator.clipboard) return false;
-
-      try {
-        if (window.ClipboardItem) {
-          const item = new ClipboardItem({
-            'text/html': new Blob([htmlTabla], { type: 'text/html' }),
-            'text/plain': new Blob([textoPlano], { type: 'text/plain' })
-          });
-          await navigator.clipboard.write([item]);
-        } else {
-          await navigator.clipboard.writeText(textoPlano);
+    function valor(row, aliases) {
+      const keys = Object.keys(row);
+      for (const alias of aliases) {
+        const objetivo = normalizarCabecera(alias);
+        const key = keys.find((k) => normalizarCabecera(k) === objetivo);
+        if (key && row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+          return row[key];
         }
-        return true;
-      } catch (_) {
-        return false;
       }
+      return '';
     }
 
-    async function copiarTablaInventario() {
-      if (!registros.length) {
-        alert('No hay registros todavía.');
-        return false;
-      }
-
-      const htmlTabla = generarTablaHTMLSimple();
-      const textoPlano = generarTablaTextoSimple();
-      const copiado = await copiarTablaAlPortapapeles(htmlTabla, textoPlano);
-
-      if (copiado) {
-        alert('Tabla copiada. Ya puedes pegarla donde quieras.');
-      } else {
-        alert('No se pudo copiar con formato enriquecido automáticamente en este dispositivo.');
-      }
-      return copiado;
+    function limpiarTexto(v) {
+      return String(v ?? '').replace(/\s+/g, ' ').trim();
     }
 
-    $('copyBtn').addEventListener('click', copiarTablaInventario);
-
-    $('mailBtn').addEventListener('click', async () => {
-      const copiado = await copiarTablaInventario();
-      if (!registros.length) return;
-
-      const asunto = encodeURIComponent(`Inventario QR (${registros.length} registros)`);
-      const cuerpo = copiado
-        ? encodeURIComponent('La tabla de inventario ya está copiada en tu portapapeles.\nPégala en el cuerpo del correo (Paste/Pegar).')
-        : encodeURIComponent('No se pudo copiar formato enriquecido automáticamente.\nPuedes copiar manualmente la tabla visible en la app.');
-
-      window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
-    });
-
-    function onScanSuccess(decodedText) {
-      const ahora = Date.now();
-      const duplicadoReciente = decodedText === ultimoCodigo && (ahora - ultimoMomento) < 2500;
-      if (modalAbierta || duplicadoReciente) return;
-
-      ultimoCodigo = decodedText;
-      ultimoMomento = ahora;
-      statusEl.textContent = `QR detectado: ${decodedText}`;
-      abrirModal(decodedText);
+    function limpiarNumero(v) {
+      const text = String(v ?? '').replace(',', '.').trim();
+      if (!text) return null;
+      const n = Number(text);
+      return Number.isFinite(n) ? n : text;
     }
 
-
-    function obtenerTrackActivoDelReader() {
-      const video = document.querySelector('#reader video');
-      const stream = video?.srcObject;
-      const track = stream?.getVideoTracks?.()[0];
-      return track || null;
+    function mapearFilaGrande(row) {
+      return {
+        agrupacion: limpiarTexto(valor(row, ['AGRUP', 'AGRUPACION'])),
+        coche: limpiarTexto(valor(row, ['COCHE'])),
+        numeroSerie: limpiarTexto(valor(row, ['N°SERIE', 'NºSERIE', 'N.SERIE'])),
+        material: limpiarTexto(valor(row, ['MATERIAL'])),
+        textoBreveMaterial: limpiarTexto(valor(row, ['TEXTO BREVE DE MATERIAL'])),
+        componente: limpiarTexto(valor(row, ['COMPONENTE'])),
+        textoBreveObjeto: limpiarTexto(valor(row, ['TEXTO BREVE-OBJETO', 'TEXTO BREVE OBJETO'])),
+        bloqueBol: limpiarTexto(valor(row, ['BLOQUE BOL'])),
+        ubicacionDeseada: limpiarTexto(valor(row, ['UBICACION DESEADA'])),
+        diaSecuencia: limpiarNumero(valor(row, ['DIA SEC.', 'DIA SEC']))
+      };
     }
 
-    async function aplicarAutoenfoque(track) {
-      if (!track?.getCapabilities || !track?.applyConstraints) return false;
-
-      const caps = track.getCapabilities();
-      const advanced = [];
-      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
-        advanced.push({ focusMode: 'continuous' });
-      }
-      if (caps.focusDistance) {
-        advanced.push({ focusDistance: caps.focusDistance.max });
-      }
-
-      if (!advanced.length) return false;
-
-      await track.applyConstraints({ advanced });
-      return true;
+    function mapearFilaMediana(row) {
+      return {
+        agrupacion: limpiarTexto(valor(row, ['AGRUPACION'])),
+        coche: limpiarTexto(valor(row, ['COCHE'])),
+        material: limpiarTexto(valor(row, ['MATERIAL'])),
+        textoBreveMaterial: limpiarTexto(valor(row, ['TEXTO BREVE DE MATERIAL'])),
+        componente: limpiarTexto(valor(row, ['COMPONENTE'])),
+        textoBreveObjeto: limpiarTexto(valor(row, ['TEXTO BREVE-OBJETO', 'TEXTO BREVE OBJETO'])),
+        cantidadPrep: limpiarNumero(valor(row, ['CANT. PREP', 'CANT PREP'])),
+        faltas: limpiarTexto(valor(row, ['FALTAS', 'FALTA'])),
+        maleta: limpiarTexto(valor(row, ['MALETA'])),
+        puntoConsumo: limpiarTexto(valor(row, ['PUNTO DE CONSUMO'])),
+        unidadTransporte: limpiarTexto(valor(row, ['UNIDAD DE TRANSPORTE']))
+      };
     }
 
-    async function intentarConfigurarAutoenfoque() {
-      for (let i = 0; i < 6; i += 1) {
-        const track = obtenerTrackActivoDelReader();
-        if (track) {
+    function filaVacia(obj) {
+      return Object.values(obj).every((v) => v === '' || v === null);
+    }
+
+    function procesarWorkbook(file, tipo) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
           try {
-            const ok = await aplicarAutoenfoque(track);
-            if (ok) {
-              statusEl.textContent = 'Autoenfoque activado. Escanea con la cámara trasera.';
-            }
-            return;
-          } catch (_) {
-            return;
+            const wb = XLSX.read(reader.result, { type: 'array' });
+            const hojas = wb.SheetNames.map((sheetName) => {
+              const sheet = wb.Sheets[sheetName];
+              const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+              const mapper = tipo === 'grande' ? mapearFilaGrande : mapearFilaMediana;
+              const filas = rows.map(mapper).filter((f) => !filaVacia(f));
+              return {
+                hoja: sheetName,
+                totalFilas: filas.length,
+                filas
+              };
+            });
+
+            resolve({
+              archivo: file.name,
+              tipoMaterial: tipo,
+              totalHojas: hojas.length,
+              hojas
+            });
+          } catch (error) {
+            reject(new Error(`Error procesando ${file.name}: ${error.message}`));
           }
-        }
-        await new Promise(r => setTimeout(r, 250));
-      }
+        };
+        reader.onerror = () => reject(new Error(`No se pudo leer ${file.name}.`));
+        reader.readAsArrayBuffer(file);
+      });
     }
 
-    function esDispositivoIOS() {
-      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    }
+    async function transformar() {
+      const grandes = Array.from($('grandesInput').files || []);
+      const medianos = Array.from($('medianosInput').files || []);
 
-    function elegirCamaraTrasera(camaras) {
-      const porEtiqueta = camaras.find(c => /(back|rear|environment|trasera)/i.test(c.label || ''));
-      return porEtiqueta || camaras[0];
-    }
-
-    async function iniciarConFallback(html5QrCode, camaras, config) {
-      const camaraPreferida = elegirCamaraTrasera(camaras);
-      const intentos = [
-        camaraPreferida?.id,
-        { facingMode: 'environment' },
-        camaras[0]?.id
-      ].filter(Boolean);
-
-      let ultimoError;
-      for (const objetivo of intentos) {
-        try {
-          await html5QrCode.start(objetivo, config, onScanSuccess, () => {});
-          return;
-        } catch (e) {
-          ultimoError = e;
-        }
+      if (!grandes.length && !medianos.length) {
+        statusEl.className = 'status warn';
+        statusEl.textContent = 'Debes seleccionar al menos un archivo Excel.';
+        return;
       }
 
-      throw ultimoError || new Error('No se pudo iniciar el lector QR.');
-    }
+      statusEl.className = 'status';
+      statusEl.textContent = 'Procesando archivos...';
 
-    async function iniciarScanner() {
       try {
-        const html5QrCode = new Html5Qrcode('reader');
-        const cams = await Html5Qrcode.getCameras();
-        if (!cams?.length) throw new Error('No se detectaron cámaras.');
+        const grandeData = await Promise.all(grandes.map((f) => procesarWorkbook(f, 'grande')));
+        const medianoData = await Promise.all(medianos.map((f) => procesarWorkbook(f, 'mediano')));
 
-        const esIOS = esDispositivoIOS();
-        const configEscaneo = {
-          fps: esIOS ? 7 : 10,
-          aspectRatio: 1.333,
-          experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
+        const generadoEn = new Date().toISOString();
+        const totalFilas = [...grandeData, ...medianoData]
+          .flatMap((a) => a.hojas)
+          .reduce((acc, h) => acc + h.totalFilas, 0);
+
+        resultadoActual = {
+          meta: {
+            generadoEn,
+            archivosGrandes: grandeData.length,
+            archivosMedianos: medianoData.length,
+            totalFilas
+          },
+          materialGrande: grandeData,
+          materialMediano: medianoData
         };
 
-        if (!esIOS) {
-          configEscaneo.qrbox = { width: 240, height: 240 };
-        } else {
-          statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
-        }
-
-        await iniciarConFallback(html5QrCode, cams, configEscaneo);
-        await intentarConfigurarAutoenfoque();
-
-        scanState.textContent = 'Escáner activo';
-        if (!esIOS) {
-          statusEl.textContent = 'Escáner activo. Esperando primer QR…';
-        }
-      } catch (err) {
-        scanState.textContent = 'Error de cámara';
-        statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
+        previewEl.textContent = JSON.stringify(resultadoActual, null, 2);
+        copiarBtn.disabled = false;
+        descargarBtn.disabled = false;
+        statusEl.className = 'status';
+        statusEl.textContent = `JSON generado correctamente (${totalFilas} filas transformadas).`;
+      } catch (error) {
+        statusEl.className = 'status warn';
+        statusEl.textContent = error.message || 'Error desconocido al transformar.';
       }
     }
 
-    window.addEventListener('load', iniciarScanner);
+    async function copiarJson() {
+      if (!resultadoActual) return;
+      const texto = JSON.stringify(resultadoActual, null, 2);
+      await navigator.clipboard.writeText(texto);
+      statusEl.className = 'status';
+      statusEl.textContent = 'JSON copiado al portapapeles.';
+    }
+
+    function descargarJson() {
+      if (!resultadoActual) return;
+      const nombreBase = limpiarTexto($('nombreSalida').value) || 'materiales_estaciones';
+      const blob = new Blob([JSON.stringify(resultadoActual, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${nombreBase}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      statusEl.className = 'status';
+      statusEl.textContent = 'JSON descargado correctamente.';
+    }
+
+    $('transformarBtn').addEventListener('click', transformar);
+    $('copiarBtn').addEventListener('click', () => copiarJson().catch(() => {
+      statusEl.className = 'status warn';
+      statusEl.textContent = 'No se pudo copiar al portapapeles en este navegador.';
+    }));
+    $('descargarBtn').addEventListener('click', descargarJson);
   </script>
 </body>
 </html>
