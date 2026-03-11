@@ -10,6 +10,8 @@ let ultimoMomento = 0;
 let codigoPendiente = null;
 let modalAbierta = false;
 let modoManual = false;
+let html5QrCodeInstance = null;
+let scannerPausado = false;
 
 const $ = (id) => document.getElementById(id);
 const tbody = $('tbody');
@@ -37,7 +39,28 @@ function actualizarTabla() {
   totalRegistros.textContent = registros.length;
 }
 
-function abrirModal(codigo = '', manual = false) {
+async function pausarScanner() {
+  if (!html5QrCodeInstance || scannerPausado) return;
+  try {
+    await html5QrCodeInstance.pause(true);
+    scannerPausado = true;
+    scanState.textContent = 'Escáner en pausa';
+  } catch (_) {}
+}
+
+async function reanudarScanner() {
+  if (!html5QrCodeInstance || !scannerPausado) return;
+  try {
+    await html5QrCodeInstance.resume();
+    scannerPausado = false;
+    scanState.textContent = 'Escáner activo';
+    statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
+  } catch (_) {}
+}
+
+async function abrirModal(codigo = '', manual = false) {
+  await pausarScanner();
+
   modalAbierta = true;
   modoManual = manual;
   codigoPendiente = manual ? null : codigo;
@@ -61,19 +84,19 @@ function abrirModal(codigo = '', manual = false) {
   }
 }
 
-function cerrarModal() {
+async function cerrarModal() {
   modalAbierta = false;
   codigoPendiente = null;
   modoManual = false;
   $('modalWrap').style.display = 'none';
   $('modalWrap').setAttribute('aria-hidden', 'true');
-  statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
+  await reanudarScanner();
 }
 
 $('cancelBtn').addEventListener('click', cerrarModal);
 $('manualBtn').addEventListener('click', () => abrirModal('', true));
 
-$('guardarBtn').addEventListener('click', () => {
+$('guardarBtn').addEventListener('click', async () => {
   const codigo = (modoManual ? $('codigoInput').value : codigoPendiente || $('codigoInput').value).trim();
   const cantidad = Number($('cantidadInput').value);
   const serie = $('serieInput').value.trim();
@@ -99,7 +122,7 @@ $('guardarBtn').addEventListener('click', () => {
   });
 
   actualizarTabla();
-  cerrarModal();
+  await cerrarModal();
 });
 
 function escapeHtml(value) {
@@ -192,7 +215,7 @@ $('mailBtn').addEventListener('click', async () => {
   window.location.href = `mailto:?subject=${asunto}&body=${cuerpo}`;
 });
 
-function onScanSuccess(decodedText) {
+async function onScanSuccess(decodedText) {
   const ahora = Date.now();
   const duplicadoReciente = decodedText === ultimoCodigo && (ahora - ultimoMomento) < 2500;
   if (modalAbierta || duplicadoReciente) return;
@@ -200,7 +223,7 @@ function onScanSuccess(decodedText) {
   ultimoCodigo = decodedText;
   ultimoMomento = ahora;
   statusEl.textContent = `QR detectado: ${decodedText}`;
-  abrirModal(decodedText, false);
+  await abrirModal(decodedText, false);
 }
 
 function obtenerTrackActivoDelReader() {
@@ -279,7 +302,7 @@ async function iniciarConFallback(html5QrCode, camaras, config) {
 
 async function iniciarScanner() {
   try {
-    const html5QrCode = new Html5Qrcode('reader');
+    html5QrCodeInstance = new Html5Qrcode('reader');
     const cams = await Html5Qrcode.getCameras();
     if (!cams?.length) throw new Error('No se detectaron cámaras.');
 
@@ -296,7 +319,7 @@ async function iniciarScanner() {
       statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
     }
 
-    await iniciarConFallback(html5QrCode, cams, configEscaneo);
+    await iniciarConFallback(html5QrCodeInstance, cams, configEscaneo);
     await intentarConfigurarAutoenfoque();
 
     scanState.textContent = 'Escáner activo';
