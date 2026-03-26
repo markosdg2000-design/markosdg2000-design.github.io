@@ -357,6 +357,70 @@ async function escanearConDetectorNativo() {
     if (detectorNativo) {
       const codigos = await detectorNativo.detect(videoNativo);
       texto = codigos?.[0]?.rawValue || null;
+function mostrarBotonReintento(mostrar) {
+  if (!retryCameraBtn) return;
+  retryCameraBtn.style.display = mostrar ? 'inline-flex' : 'none';
+}
+
+function cargarScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function asegurarLibreriaQr() {
+  if (window.Html5Qrcode) return;
+
+  let ultimoError;
+  for (const url of QR_LIB_URLS) {
+    try {
+      await cargarScript(url);
+      if (window.Html5Qrcode) return;
+    } catch (err) {
+      ultimoError = err;
+    }
+  }
+
+  throw ultimoError || new Error('No se pudo cargar la librería de escaneo QR.');
+}
+
+function validarEntornoCamara() {
+  if (!window.isSecureContext) {
+    throw new Error('La cámara solo funciona en HTTPS o localhost.');
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Este navegador no soporta acceso a cámara.');
+  }
+}
+
+async function iniciarScanner() {
+  try {
+    mostrarBotonReintento(false);
+    validarEntornoCamara();
+    await asegurarLibreriaQr();
+
+    if (html5QrCodeInstance?.isScanning) {
+      await html5QrCodeInstance.stop();
+    }
+
+    html5QrCodeInstance = new Html5Qrcode('reader');
+    const cams = await Html5Qrcode.getCameras();
+    if (!cams?.length) throw new Error('No se detectaron cámaras.');
+
+    const esIOS = esDispositivoIOS();
+    const configEscaneo = {
+      fps: esIOS ? 7 : 10,
+      aspectRatio: 1.333,
+      experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
+    };
+
+    if (!esIOS) {
+      configEscaneo.qrbox = { width: 240, height: 240 };
     } else {
       texto = detectarConJsQR();
     }
