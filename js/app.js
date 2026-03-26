@@ -12,12 +12,25 @@ let modalAbierta = false;
 let modoManual = false;
 let html5QrCodeInstance = null;
 let scannerPausado = false;
+let streamNativo = null;
+let videoNativo = null;
+let detectorNativo = null;
+let scanNativoActivo = false;
+let canvasNativo = null;
+let ctxNativo = null;
 
 const $ = (id) => document.getElementById(id);
 const tbody = $('tbody');
 const totalRegistros = $('totalRegistros');
 const statusEl = $('status');
 const scanState = $('scanState');
+const retryCameraBtn = $('retryCameraBtn');
+
+const QR_LIB_URLS = [
+  './js/vendor/html5-qrcode.min.js',
+  'https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js',
+  'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/html5-qrcode.min.js'
+];
 
 function fmtDate(d) {
   return new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(d);
@@ -40,22 +53,30 @@ function actualizarTabla() {
 }
 
 async function pausarScanner() {
-  if (!html5QrCodeInstance || scannerPausado) return;
-  try {
-    await html5QrCodeInstance.pause(true);
-    scannerPausado = true;
-    scanState.textContent = 'Escáner en pausa';
-  } catch (_) {}
+  if (scannerPausado) return;
+
+  if (html5QrCodeInstance) {
+    try {
+      await html5QrCodeInstance.pause(true);
+    } catch (_) {}
+  }
+
+  scannerPausado = true;
+  scanState.textContent = 'Escáner en pausa';
 }
 
 async function reanudarScanner() {
-  if (!html5QrCodeInstance || !scannerPausado) return;
-  try {
-    await html5QrCodeInstance.resume();
-    scannerPausado = false;
-    scanState.textContent = 'Escáner activo';
-    statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
-  } catch (_) {}
+  if (!scannerPausado) return;
+
+  if (html5QrCodeInstance) {
+    try {
+      await html5QrCodeInstance.resume();
+    } catch (_) {}
+  }
+
+  scannerPausado = false;
+  scanState.textContent = 'Escáner activo';
+  statusEl.textContent = 'Escáner activo. Esperando siguiente QR…';
 }
 
 async function abrirModal(codigo = '', manual = false) {
@@ -300,36 +321,192 @@ async function iniciarConFallback(html5QrCode, camaras, config) {
   throw ultimoError || new Error('No se pudo iniciar el lector QR.');
 }
 
-async function iniciarScanner() {
+function detenerScannerNativo() {
+  scanNativoActivo = false;
+  detectorNativo = null;
+  ctxNativo = null;
+  canvasNativo = null;
+  videoNativo = null;
+
+  if (streamNativo) {
+    streamNativo.getTracks().forEach((track) => track.stop());
+    streamNativo = null;
+  }
+}
+
+function detectarConJsQR() {
+  if (!window.jsQR || !videoNativo || !canvasNativo || !ctxNativo) return null;
+  if (!videoNativo.videoWidth || !videoNativo.videoHeight) return null;
+
+  if (canvasNativo.width !== videoNativo.videoWidth || canvasNativo.height !== videoNativo.videoHeight) {
+    canvasNativo.width = videoNativo.videoWidth;
+    canvasNativo.height = videoNativo.videoHeight;
+  }
+
+  ctxNativo.drawImage(videoNativo, 0, 0, canvasNativo.width, canvasNativo.height);
+  const imageData = ctxNativo.getImageData(0, 0, canvasNativo.width, canvasNativo.height);
+  const codigo = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+  return codigo?.data || null;
+}
+
+async function escanearConDetectorNativo() {
+  if (!scanNativoActivo || scannerPausado || !videoNativo) return;
+
   try {
-    html5QrCodeInstance = new Html5Qrcode('reader');
-    const cams = await Html5Qrcode.getCameras();
-    if (!cams?.length) throw new Error('No se detectaron cámaras.');
-
-    const esIOS = esDispositivoIOS();
-    const configEscaneo = {
-      fps: esIOS ? 7 : 10,
-      aspectRatio: 1.333,
-      experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
-    };
-
-    if (!esIOS) {
-      configEscaneo.qrbox = { width: 240, height: 240 };
+    let texto = null;
+    if (detectorNativo) {
+      const codigos = await detectorNativo.detect(videoNativo);
+      texto = codigos?.[0]?.rawValue || null;
     } else {
-      statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
+      texto = detectarConJsQR();
     }
 
-    await iniciarConFallback(html5QrCodeInstance, cams, configEscaneo);
-    await intentarConfigurarAutoenfoque();
+    if (texto) {
+      await onScanSuccess(texto);
+    }
+  } catch (_) {
+    // Ignoramos frames no legibles.
+  }
 
-    scanState.textContent = 'Escáner activo';
-    if (!esIOS) {
-      statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+  if (scanNativoActivo) {
+    requestAnimationFrame(escanearConDetectorNativo);
+  }
+}
+
+async function iniciarScannerNativo() {
+  const reader = document.getElementById('reader');
+  if (!reader) throw new Error('No existe contenedor para la cámara.');
+
+  detenerScannerNativo();
+  reader.innerHTML = '';
+
+  streamNativo = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    },
+    audio: false
+  });
+
+  videoNativo = document.createElement('video');
+  videoNativo.setAttribute('playsinline', 'true');
+  videoNativo.autoplay = true;
+  videoNativo.muted = true;
+  videoNativo.srcObject = streamNativo;
+  videoNativo.style.width = '100%';
+  videoNativo.style.borderRadius = '14px';
+  reader.appendChild(videoNativo);
+  canvasNativo = document.createElement('canvas');
+  ctxNativo = canvasNativo.getContext('2d', { willReadFrequently: true });
+
+  await videoNativo.play();
+
+  if (typeof window.BarcodeDetector === 'function') {
+    detectorNativo = new BarcodeDetector({ formats: ['qr_code'] });
+    scanNativoActivo = true;
+    requestAnimationFrame(escanearConDetectorNativo);
+    statusEl.textContent = 'Escáner activo (modo nativo). Esperando primer QR…';
+  } else if (typeof window.jsQR === 'function') {
+    detectorNativo = null;
+    scanNativoActivo = true;
+    requestAnimationFrame(escanearConDetectorNativo);
+    statusEl.textContent = 'Escáner activo (modo jsQR local). Esperando primer QR…';
+  } else {
+    detectorNativo = null;
+    statusEl.textContent = 'Cámara abierta, pero sin motor de escaneo. Copia jsQR.js en /js o usa introducir código manualmente.';
+  }
+}
+
+function mostrarBotonReintento(mostrar) {
+  if (!retryCameraBtn) return;
+  retryCameraBtn.style.display = mostrar ? 'inline-flex' : 'none';
+}
+
+function cargarScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function asegurarLibreriaQr() {
+  if (window.Html5Qrcode) return;
+
+  let ultimoError;
+  for (const url of QR_LIB_URLS) {
+    try {
+      await cargarScript(url);
+      if (window.Html5Qrcode) return;
+    } catch (err) {
+      ultimoError = err;
+    }
+  }
+
+  throw ultimoError || new Error('No se pudo cargar la librería de escaneo QR.');
+}
+
+function validarEntornoCamara() {
+  if (!window.isSecureContext) {
+    throw new Error('La cámara solo funciona en HTTPS o localhost.');
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Este navegador no soporta acceso a cámara.');
+  }
+}
+
+async function iniciarScanner() {
+  try {
+    mostrarBotonReintento(false);
+    validarEntornoCamara();
+    detenerScannerNativo();
+
+    if (html5QrCodeInstance?.isScanning) {
+      await html5QrCodeInstance.stop();
+    }
+
+    try {
+      await asegurarLibreriaQr();
+
+      html5QrCodeInstance = new Html5Qrcode('reader');
+      const cams = await Html5Qrcode.getCameras();
+      if (!cams?.length) throw new Error('No se detectaron cámaras.');
+
+      const esIOS = esDispositivoIOS();
+      const configEscaneo = {
+        fps: esIOS ? 7 : 10,
+        aspectRatio: 1.333,
+        experimentalFeatures: { useBarCodeDetectorIfSupported: !esIOS }
+      };
+
+      if (!esIOS) {
+        configEscaneo.qrbox = { width: 240, height: 240 };
+      } else {
+        statusEl.textContent = 'Modo iPhone/iPad activado: acerca el QR y manténlo estable 1-2 segundos.';
+      }
+
+      await iniciarConFallback(html5QrCodeInstance, cams, configEscaneo);
+      await intentarConfigurarAutoenfoque();
+
+      scanState.textContent = 'Escáner activo';
+      if (!esIOS) {
+        statusEl.textContent = 'Escáner activo. Esperando primer QR…';
+      }
+    } catch (errorLibreria) {
+      html5QrCodeInstance = null;
+      await iniciarScannerNativo();
+      scanState.textContent = 'Escáner activo';
     }
   } catch (err) {
     scanState.textContent = 'Error de cámara';
     statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
+    mostrarBotonReintento(true);
   }
 }
 
+retryCameraBtn?.addEventListener('click', iniciarScanner);
 window.addEventListener('load', iniciarScanner);
