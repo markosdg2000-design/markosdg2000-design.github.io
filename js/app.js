@@ -327,7 +327,12 @@ function detectarConJsQR() {
 }
 
 async function escanearConDetectorNativo() {
-  if (!scanNativoActivo || scannerPausado || !videoNativo) return;
+  if (!scanNativoActivo) return;
+
+  if (scannerPausado || !videoNativo) {
+    requestAnimationFrame(escanearConDetectorNativo);
+    return;
+  }
 
   try {
     let texto = null;
@@ -345,9 +350,7 @@ async function escanearConDetectorNativo() {
     // ignorar frames no legibles
   }
 
-  if (scanNativoActivo) {
-    requestAnimationFrame(escanearConDetectorNativo);
-  }
+  if (scanNativoActivo) requestAnimationFrame(escanearConDetectorNativo);
 }
 
 function cargarScript(src) {
