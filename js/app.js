@@ -18,6 +18,12 @@ const tbody = $('tbody');
 const totalRegistros = $('totalRegistros');
 const statusEl = $('status');
 const scanState = $('scanState');
+const retryCameraBtn = $('retryCameraBtn');
+
+const QR_LIB_URLS = [
+  'https://unpkg.com/html5-qrcode@2.3.10/html5-qrcode.min.js',
+  'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.10/html5-qrcode.min.js'
+];
 
 function fmtDate(d) {
   return new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'medium' }).format(d);
@@ -300,8 +306,57 @@ async function iniciarConFallback(html5QrCode, camaras, config) {
   throw ultimoError || new Error('No se pudo iniciar el lector QR.');
 }
 
+function mostrarBotonReintento(mostrar) {
+  if (!retryCameraBtn) return;
+  retryCameraBtn.style.display = mostrar ? 'inline-flex' : 'none';
+}
+
+function cargarScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error(`No se pudo cargar ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function asegurarLibreriaQr() {
+  if (window.Html5Qrcode) return;
+
+  let ultimoError;
+  for (const url of QR_LIB_URLS) {
+    try {
+      await cargarScript(url);
+      if (window.Html5Qrcode) return;
+    } catch (err) {
+      ultimoError = err;
+    }
+  }
+
+  throw ultimoError || new Error('No se pudo cargar la librería de escaneo QR.');
+}
+
+function validarEntornoCamara() {
+  if (!window.isSecureContext) {
+    throw new Error('La cámara solo funciona en HTTPS o localhost.');
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Este navegador no soporta acceso a cámara.');
+  }
+}
+
 async function iniciarScanner() {
   try {
+    mostrarBotonReintento(false);
+    validarEntornoCamara();
+    await asegurarLibreriaQr();
+
+    if (html5QrCodeInstance?.isScanning) {
+      await html5QrCodeInstance.stop();
+    }
+
     html5QrCodeInstance = new Html5Qrcode('reader');
     const cams = await Html5Qrcode.getCameras();
     if (!cams?.length) throw new Error('No se detectaron cámaras.');
@@ -329,7 +384,9 @@ async function iniciarScanner() {
   } catch (err) {
     scanState.textContent = 'Error de cámara';
     statusEl.textContent = `No se pudo abrir la cámara: ${err.message || err}`;
+    mostrarBotonReintento(true);
   }
 }
 
+retryCameraBtn?.addEventListener('click', iniciarScanner);
 window.addEventListener('load', iniciarScanner);
